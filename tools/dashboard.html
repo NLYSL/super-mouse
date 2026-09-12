@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<!--
+  Super Mouse 调试面板
+
+  订阅 ws://127.0.0.1:8765（supermouse/core/ws.py 广播总线事件），
+  实时显示 EEG 波形、眨眼/眼势、雷达距离、事件流。
+
+  演示时投在第二块屏幕：波形是"硬件真实接入"最直接的证据。
+
+  直接用浏览器打开即可，无需服务器。配色取自 dataviz 规范暗色表面，
+  7 色分类序已通过校验（最差相邻对 ΔE 8.4 protan / 19.3 normal）。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Super Mouse · 调试面板</title>
+<style>
+  :root {
+    /* dataviz 暗色表面 */
+    --surface:   #1a1a19;
+    --plane:     #0d0d0d;
+    --ink:       #ffffff;
+    --ink-2:     #c3c2b7;
+    --muted:     #898781;
+    --grid:      #2c2c2a;
+    --baseline:  #383835;
+    --border:    rgba(255,255,255,0.10);
+    /* 分类色（暗色档） */
+    --c-blue:    #3987e5;
+    --c-orange:  #d95926;
+    --c-aqua:    #199e70;
+    --c-yellow:  #c98500;
+    --c-magenta: #d55181;
+    --c-violet:  #9085e9;
+    --c-red:     #e66767;
+    /* 状态色（固定，不参与分类） */
+    --good:      #0ca30c;
+    --warning:   #fab219;
+    --serious:   #ec835a;
+    --critical:  #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: var(--plane); color: var(--ink);
+    font: 13px/1.5 ui-sans-serif, -apple-system, "SF Pro Text", "PingFang SC", sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .sub { color: var(--muted); font-size: 12px; margin-left: 10px; font-weight: 400; }
+
+  header {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-bottom: 14px; flex-wrap: wrap;
+  }
+  #conn {
+    margin-left: auto; font-size: 12px; padding: 3px 10px;
+    border-radius: 999px; border: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+  }
+  #conn .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  #conn.on  .dot { background: var(--good); }
+  #conn.off .dot { background: var(--critical); }
+
+  .grid { display: grid; grid-template-columns: 1fr 340px; gap: 14px; }
+  @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .card h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: .09em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 0 0 10px;
+  }
+
+  /* 模式状态瓦片 */
+  .modes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  @media (max-width: 820px) { .modes { grid-template-columns: repeat(2, 1fr); } }
+  .mode {
+    background: var(--surface); border: 1px solid var(--border);
+    border-left: 3px solid var(--baseline);
+    border-radius: 8px; padding: 10px 12px;
+    transition: border-left-color .25s, background .25s;
+  }
+  .mode .name { font-size: 10px; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
+  .mode .val  { font-size: 19px; font-weight: 600; margin-top: 3px; line-height: 1.25; }
+  .mode .note { font-size: 11px; color: var(--muted); margin-top: 2px; min-height: 16px; }
+  .mode.live { border-left-color: var(--c-blue); }
+  .mode.hit  { border-left-color: var(--good); background: #1e2a1e; }
+  .mode.warn { border-left-color: var(--critical); background: #2a1c1c; }
+
+  /* 波形 */
+  .wave-wrap { position: relative; }
+  canvas { display: block; width: 100%; height: 190px; border-radius: 6px; }
+  .legend {
+    display: flex; gap: 16px; align-items: center;
+    margin-top: 8px; font-size: 11px; color: var(--ink-2); flex-wrap: wrap;
+  }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 11px; height: 2px; border-radius: 1px; }
+  .swatch.mark { width: 2px; height: 11px; border-radius: 1px; }
+
+  /* 数值行 */
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; text-align: right; font-weight: 500; }
+
+  /* 事件流 */
+  #log { height: 340px; overflow-y: auto; font: 11.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; }
+  #log div { display: flex; gap: 8px; padding: 1px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+  #log .t    { color: var(--muted); flex: 0 0 58px; }
+  #log .ty   { flex: 0 0 118px; font-weight: 600; }
+  #log .pl   { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ty.bci   { color: var(--c-blue); }
+  .ty.eye   { color: var(--c-aqua); }
+  .ty.radar { color: var(--c-violet); }
+  .ty.sense { color: var(--critical); }
+  .ty.brain { color: var(--c-yellow); }
+  .ty.action{ color: var(--c-orange); }
+  .ty.mouse { color: var(--muted); }
+  .ty.heart { color: var(--c-magenta); }
+  .ty.sys   { color: var(--warning); }
+
+  /* 眼势闪现 */
+  #flash {
+    position: fixed; left: 50%; top: 22%; transform: translateX(-50%);
+    font-size: 40px; font-weight: 700; letter-spacing: .04em;
+    color: var(--good); opacity: 0; pointer-events: none;
+    transition: opacity .12s; text-shadow: 0 2px 24px rgba(0,0,0,.6);
+  }
+  #flash.on { opacity: 1; }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 10px; }
+  code { background: rgba(255,255,255,.06); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Super Mouse</h1>
+  <span class="sub">调试面板 · ws://127.0.0.1:8765</span>
+  <div id="conn"><span class="dot"></span><span id="conn-txt">连接中…</span></div>
+</header>
+
+<div class="modes">
+  <div class="mode" id="m-eyes">
+    <div class="name">SHARP EYES</div>
+    <div class="val" id="v-eyes">—</div>
+    <div class="note" id="n-eyes">等待脑机</div>
+  </div>
+  <div class="mode" id="m-brain">
+    <div class="name">SMART BRAIN</div>
+    <div class="val" id="v-brain">待机</div>
+    <div class="note" id="n-brain">悬停触发</div>
+  </div>
+  <div class="mode" id="m-sense">
+    <div class="name">STRONG SENSE</div>
+    <div class="val" id="v-sense">安全</div>
+    <div class="note" id="n-sense">等待雷达</div>
+  </div>
+  <div class="mode" id="m-heart">
+    <div class="name">SOFT HEART</div>
+    <div class="val" id="v-heart">—</div>
+    <div class="note" id="n-heart">眨眼频率</div>
+  </div>
+</div>
+
+<div class="grid">
+  <div>
+    <div class="card wave-wrap">
+      <h2>前额叶 EEG · 实时波形</h2>
+      <canvas id="wave"></canvas>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--c-blue)"></i>EEG（带通滤波后）</span>
+        <span><i class="swatch mark" style="background:var(--good)"></i>眨眼</span>
+        <span><i class="swatch mark" style="background:var(--warning)"></i>重眨</span>
+        <span id="wave-meta" style="color:var(--muted);margin-left:auto"></span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>事件流</h2>
+      <div id="log"></div>
+      <div class="hint">
+        模拟器热键：<code>F13</code> 双眨 · <code>F14</code> 三眨 · <code>F15</code> 重眨 ·
+        <code>F18</code> 单眨 · <code>F16</code> 身后有人 · <code>F17</code> 清空 ·
+        <code>Esc Esc</code> 急停
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>脑机</h2>
+      <dl class="kv">
+        <dt>连接</dt><dd id="k-bci">—</dd>
+        <dt>信号质量</dt><dd id="k-q">—</dd>
+        <dt>采样率</dt><dd id="k-fs">—</dd>
+        <dt>眨眼总数</dt><dd id="k-blinks">0</dd>
+        <dt>最近强度</dt><dd id="k-str">—</dd>
+        <dt>最近时长</dt><dd id="k-dur">—</dd>
+        <dt>重眨阈值</dt><dd>0.80</dd>
+      </dl>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>雷达</h2>
+      <dl class="kv">
+        <dt>连接</dt><dd id="k-radar">—</dd>
+        <dt>型号</dt><dd id="k-model">—</dd>
+        <dt>状态</dt><dd id="k-rstate">—</dd>
+        <dt>移动距离</dt><dd id="k-mov">—</dd>
+        <dt>静止距离</dt><dd id="k-sta">—</dd>
+        <dt>目标数</dt><dd id="k-tgt">—</dd>
+        <dt>帧数</dt><dd id="k-frames">0</dd>
+      </dl>
+    </div>
+
+    <div class="card" style="margin-top:14px">
+      <h2>统计</h2>
+      <dl class="kv">
+        <dt>事件总数</dt><dd id="k-evts">0</dd>
+        <dt>事件速率</dt><dd id="k-rate">0 /s</dd>
+        <dt>眼势总数</dt><dd id="k-gest">0</dd>
+        <dt>运行时长</dt><dd id="k-up">0s</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+
+<div id="flash"></div>
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------- 波形
+
+const cv  = document.getElementById('wave');
+const ctx = cv.getContext('2d');
+const SECONDS = 6;                 // 显示最近 6 秒
+let fs = 250;                      // 实测脑机 250 Hz，收到 bci.raw 后按真实值更新
+let cap = fs * SECONDS;
+let buf = new Float32Array(cap);   // 环形缓冲
+let wpos = 0, filled = 0;
+let marks = [];                    // 眨眼标记 {pos, hard}
+
+function resize() {
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width  = Math.round(r.width  * dpr);
+  cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+function pushSamples(arr) {
+  for (let i = 0; i < arr.length; i++) {
+    buf[wpos] = arr[i];
+    wpos = (wpos + 1) % cap;
+    if (filled < cap) filled++;
+  }
+}
+
+function addMark(hard) {
+  marks.push({ pos: wpos, hard: !!hard });
+  if (marks.length > 60) marks.shift();
+}
+
+const css = k => getComputedStyle(document.documentElement).getPropertyValue(k).trim();
+
+function draw() {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+
+  // 背景
+  ctx.fillStyle = css('--surface');
+  ctx.fillRect(0, 0, w, h);
+
+  // 网格（recessive）
+  ctx.strokeStyle = css('--grid');
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const y = Math.round(h * i / 4) + .5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+  // 每秒一条竖线
+  for (let s = 1; s < SECONDS; s++) {
+    const x = Math.round(w * s / SECONDS) + .5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+
+  // 基线
+  ctx.strokeStyle = css('--baseline');
+  const mid = Math.round(h / 2) + .5;
+  ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w, mid); ctx.stroke();
+
+  if (filled < 2) {
+    ctx.fillStyle = css('--muted');
+    ctx.font = '12px ui-sans-serif, sans-serif';
+    ctx.fillText('等待 bci.raw 数据…（模拟器模式下没有原始波形）', 12, mid - 8);
+    requestAnimationFrame(draw);
+    return;
+  }
+
+  // 自适应纵向缩放：取窗口内最大绝对值
+  let peak = 1e-6;
+  for (let i = 0; i < filled; i++) {
+    const v = Math.abs(buf[i]);
+    if (v > peak) peak = v;
+  }
+  const scale = (h / 2 - 8) / peak;
+
+  // 眨眼标记（画在波形下层）
+  const start = (wpos - filled + cap) % cap;
+  for (const m of marks) {
+    let off = (m.pos - start + cap) % cap;
+    if (off > filled) continue;
+    const x = Math.round(off / filled * w) + .5;
+    ctx.strokeStyle = m.hard ? css('--warning') : css('--good');
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x, h - 6); ctx.stroke();
+  }
+
+  // 波形（2px，dataviz 规范）
+  ctx.strokeStyle = css('--c-blue');
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  const step = Math.max(1, Math.floor(filled / w));
+  let first = true;
+  for (let i = 0; i < filled; i += step) {
+    const v = buf[(start + i) % cap];
+    const x = i / filled * w;
+    const y = mid - v * scale;
+    if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+
+  document.getElementById('wave-meta').textContent =
+    `${fs} Hz · 最近 ${SECONDS}s · 峰值 ±${peak.toFixed(0)}`;
+
+  requestAnimationFrame(draw);
+}
+
+// ---------------------------------------------------------------- 状态
+
+let nEvents = 0, nBlinks = 0, nGestures = 0, nFrames = 0;
+let rateWin = [];
+const t0 = Date.now();
+
+const $ = id => document.getElementById(id);
+
+function setMode(el, cls, ttl) {
+  el.classList.remove('live', 'hit', 'warn');
+  if (cls) el.classList.add(cls);
+  if (ttl) setTimeout(() => el.classList.remove(cls), ttl);
+}
+
+const GESTURE_CN = {
+  double_blink: '双眨 → 点击',
+  triple_blink: '三眨 → 切换应用',
+  hard_blink:   '重眨 → 确认',
+  long_blink:   '长眨',
+};
+
+function flash(text) {
+  const f = $('flash');
+  f.textContent = text;
+  f.classList.add('on');
+  setTimeout(() => f.classList.remove('on'), 620);
+}
+
+function logEvent(e) {
+  const log = $('log');
+  const near = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
+  const d = document.createElement('div');
+  const fam = (e.type || '').split('.')[0];
+  const t = new Date((e.t ? e.t * 1000 : Date.now()));
+  const hh = String(t.getMinutes()).padStart(2, '0') + ':' +
+             String(t.getSeconds()).padStart(2, '0') + '.' +
+             String(Math.floor(t.getMilliseconds() / 100));
+  const pl = Object.entries(e)
+    .filter(([k]) => k !== 'type' && k !== 't' && k !== 'samples')
+    .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
+    .join(' ');
+  d.innerHTML = `<span class="t">${hh}</span>` +
+                `<span class="ty ${fam}">${e.type}</span>` +
+                `<span class="pl">${pl}</span>`;
+  log.appendChild(d);
+  while (log.children.length > 400) log.removeChild(log.firstChild);
+  if (near) log.scrollTop = log.scrollHeight;
+}
+
+function handle(e) {
+  nEvents++;
+  rateWin.push(Date.now());
+
+  switch (e.type) {
+    case 'bci.connected':
+      $('k-bci').textContent = '已连接';
+      $('k-bci').style.color = css('--good');
+      $('n-eyes').textContent = e.protocol || '已连接';
+      setMode($('m-eyes'), 'live');
+      break;
+    case 'bci.disconnected':
+      $('k-bci').textContent = '断开';
+      $('k-bci').style.color = css('--critical');
+      $('n-eyes').textContent = e.reason || '断开';
+      break;
+    case 'bci.quality': {
+      const q = e.poor_signal;
+      $('k-q').textContent = q === 0 ? '良好 (0)' : q;
+      $('k-q').style.color = q === 0 ? css('--good')
+                          : q > 50 ? css('--critical') : css('--warning');
+      break;
+    }
+    case 'bci.raw':
+      if (e.fs && e.fs !== fs) {
+        fs = e.fs; cap = fs * SECONDS;
+        buf = new Float32Array(cap); wpos = 0; filled = 0; marks = [];
+        $('k-fs').textContent = fs + ' Hz';
+      }
+      if (!$('k-fs').textContent || $('k-fs').textContent === '—')
+        $('k-fs').textContent = fs + ' Hz';
+      if (Array.isArray(e.samples)) pushSamples(e.samples);
+      break;
+    case 'bci.blink': {
+      nBlinks++;
+      const hard = e.strength >= 0.80;
+      addMark(hard);
+      $('k-blinks').textContent = nBlinks;
+      $('k-str').textContent = (e.strength ?? 0).toFixed(2);
+      $('k-str').style.color = hard ? css('--warning') : css('--ink');
+      $('k-dur').textContent = (e.duration_ms ?? 0).toFixed(0) + ' ms';
+      $('v-eyes').textContent = hard ? '重眨' : '眨眼';
+      setMode($('m-eyes'), 'live', 400);
+      break;
+    }
+    case 'eye.gesture':
+      nGestures++;
+      $('k-gest').textContent = nGestures;
+      $('v-eyes').textContent = (GESTURE_CN[e.gesture] || e.gesture).split(' → ')[0];
+      $('n-eyes').textContent = GESTURE_CN[e.gesture] || e.gesture;
+      setMode($('m-eyes'), 'hit', 900);
+      flash(GESTURE_CN[e.gesture] || e.gesture);
+      break;
+    case 'radar.connected':
+      $('k-radar').textContent = '串口在线，等待帧';
+      $('k-radar').style.color = css('--good');
+      $('k-model').textContent = e.model || '—';
+      $('n-sense').textContent = '等待雷达数据 · ' + (e.port || '');
+      setMode($('m-sense'), 'live');
+      break;
+    case 'radar.disconnected':
+      $('k-radar').textContent = '断开';
+      $('k-radar').style.color = css('--critical');
+      break;
+    case 'radar.frame':
+      $('k-radar').textContent = e.source === 'sim' ? '模拟数据（非硬件）' : '已收到目标帧';
+      $('k-radar').style.color = css('--good');
+      nFrames++;
+      $('k-frames').textContent = nFrames;
+      $('k-rstate').textContent = e.state || '—';
+      $('k-mov').textContent = e.moving_cm ? (e.moving_cm / 100).toFixed(2) + ' m' : '—';
+      $('k-sta').textContent = e.static_cm ? (e.static_cm / 100).toFixed(2) + ' m' : '—';
+      $('k-tgt').textContent = Array.isArray(e.targets) ? e.targets.length : '—';
+      if (e.model) $('k-model').textContent = e.model;
+      break;
+    case 'sense.intruder':
+      $('v-sense').textContent = '身后有人';
+      $('n-sense').textContent = (e.distance_m != null ? e.distance_m.toFixed(1) + ' m' : '') +
+                                 (e.approaching ? ' · 接近中' : '');
+      setMode($('m-sense'), 'warn');
+      flash('身后有人');
+      break;
+    case 'sense.clear':
+      $('v-sense').textContent = '安全';
+      $('n-sense').textContent = '身后清空';
+      setMode($('m-sense'), 'live');
+      break;
+    case 'brain.hover':
+      $('v-brain').textContent = '识别中';
+      $('n-brain').textContent = e.app || e.title || '';
+      setMode($('m-brain'), 'live');
+      break;
+    case 'brain.suggest':
+      $('v-brain').textContent = '举牌';
+      $('n-brain').textContent = e.title || '';
+      setMode($('m-brain'), 'hit');
+      break;
+    case 'brain.action':
+      $('v-brain').textContent = e.status === 'done' ? '完成'
+                               : e.status === 'error' ? '出错' : '执行中';
+      $('n-brain').textContent = e.message || e.progress || '';
+      setMode($('m-brain'), e.status === 'error' ? 'warn' : 'hit');
+      break;
+    case 'brain.cancel':
+      $('v-brain').textContent = '待机';
+      $('n-brain').textContent = '已取消';
+      setMode($('m-brain'), null);
+      break;
+    case 'heart.remind':
+      $('v-heart').textContent = e.kind || '提醒';
+      $('n-heart').textContent = e.message || '';
+      setMode($('m-heart'), 'hit', 3000);
+      break;
+    case 'sys.stop_all':
+      flash('急停');
+      break;
+  }
+
+  logEvent(e);
+}
+
+// ---------------------------------------------------------------- WebSocket
+
+const connEl = $('conn'), connTxt = $('conn-txt');
+let ws = null, retry = 0;
+
+function connect() {
+  connTxt.textContent = '连接中…';
+  connEl.className = '';
+  try {
+    ws = new WebSocket('ws://127.0.0.1:8765');
+  } catch (err) {
+    scheduleReconnect();
+    return;
+  }
+  ws.onopen = () => {
+    retry = 0;
+    connEl.className = 'on';
+    connTxt.textContent = '已连接';
+  };
+  ws.onmessage = ev => {
+    // 一条消息可能含多个 JSON（服务端逐条发，稳妥起见按行切）
+    for (const line of String(ev.data).split('\n')) {
+      const s = line.trim();
+      if (!s) continue;
+      try { handle(JSON.parse(s)); } catch (err) { /* 忽略坏行 */ }
+    }
+  };
+  ws.onclose = () => {
+    connEl.className = 'off';
+    scheduleReconnect();
+  };
+  ws.onerror = () => { /* onclose 会接手 */ };
+}
+
+function scheduleReconnect() {
+  // 演示健壮性：App 重启后面板自动重连，不用手动刷新
+  const wait = Math.min(1000 * Math.pow(1.5, retry++), 8000);
+  connTxt.textContent = `重连中（${(wait / 1000).toFixed(1)}s）…`;
+  setTimeout(connect, wait);
+}
+
+// 事件速率 & 运行时长
+setInterval(() => {
+  const now = Date.now();
+  rateWin = rateWin.filter(t => now - t < 1000);
+  $('k-rate').textContent = rateWin.length + ' /s';
+  $('k-evts').textContent = nEvents;
+  const up = Math.floor((now - t0) / 1000);
+  $('k-up').textContent = up < 60 ? up + 's'
+    : Math.floor(up / 60) + 'm' + String(up % 60).padStart(2, '0') + 's';
+}, 500);
+
+resize();
+requestAnimationFrame(draw);
+connect();
+</script>
+</body>
+</html>

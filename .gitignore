@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# 录制数据：原始 EEG 文件很大（--record-raw 一分钟约 30 MB）
+# 但演示要提交少量真实数据作为"硬件真实接入"的证据，
+# 所以只忽略原始波形，保留事件流录制。
+recordings/*-raw-*.jsonl
+recordings/*.bin
+
+# 用户私有数据：喂养材料、生成的 profile、Agent 日志
+# 这些在 ~/.supermouse/ 下，正常不会进仓库，列出以防误拷
+brain/raw/
+profile.md
+plans.json
+*.log
+
+# 密钥
+.env
+.env.*
+!.env.example
+
+# Arduino 编译产物
+firmware/**/build/
+
+# 本地工具配置
+.claude/
+nohup.out

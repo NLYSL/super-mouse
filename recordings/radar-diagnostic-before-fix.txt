@@ -1,0 +1,37 @@
+ESP-ROM:esp32c6-20220919
+Build:Sep 19 2022
+rst:0x15 (USB_UART_HPSYS),boot:0x1e (SPI_FAST_FLASH_BOOT)
+Saved PC:0x4080279c
+SPIWP:0xee
+mode:DIO, clock div:2
+load:0x40875730,len:0x1278
+load:0x4086b910,len:0xc58
+load:0x4086e610,len:0x31c0
+entry 0x4086b910
+
+#HELLO Super Mouse 雷达桥 · HLK-LD2454-24G
+#  协议 V1.00 · 256000 8N1 · AA FF 03 00 … 55 CC · 最多 3 目标
+#SCAN start
+#  LD2454：先在 256000 找 AA FF 03 00 帧头
+#  默认波特率没命中帧头，扫其他波特率…
+#SCAN 失败：没有任何引脚收到数据
+#LEVEL 引脚电平诊断（空闲 UART TX = 恒高）
+#  D7  GPIO17 : 被驱动 · 恒高  ← 像接通但静默的 UART TX
+#  D6  GPIO16 : 悬空（没接东西）
+#  D5  GPIO23 : 悬空（没接东西）
+#  D4  GPIO22 : 悬空（没接东西）
+#  D3  GPIO21 : 悬空（没接东西）
+#  D2  GPIO2  : 悬空（没接东西）
+#  D1  GPIO1  : 悬空（没接东西）
+#  D0  GPIO0  : 悬空（没接东西）
+#  D8  GPIO19 : 悬空（没接东西）
+#  D9  GPIO20 : 悬空（没接东西）
+#  D10 GPIO18 : 悬空（没接东西）
+#LEVEL 结论：有脚被驱动且恒高 → TX 已接通，但雷达**没有发送数据**
+#  最可能原因：供电不足。协议 §1 要求 Pin1 接 **5V**（不是 3V3）
+#  按协议 §1 检查接线（模块出厂不带排针，需自己焊）：
+#    Pin1 5V  → XIAO 5V    ← 是 5V，不是 3V3！供电不足会时好时坏
+#    Pin2 GND → XIAO GND   ← 不共地一定收不到
+#    Pin3 TX  → XIAO D7 (GPIO17)
+#    Pin4 RX  → XIAO D6 (GPIO16)   ← 不接则只能单目标
+#INFO rx=-1 tx=-1 baud=0 multi=0 bridging=0

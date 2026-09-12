@@ -1,0 +1,98 @@
+固定用户确认接法 RX=17/TX=16，仅改变桥接 UART 速率，不发送设置雷达波特率/恢复出厂/重启命令。
+ESP-ROM:esp32c6-20220919
+Build:Sep 19 2022
+rst:0x15 (USB_UART_HPSYS),boot:0x1e (SPI_FAST_FLASH_BOOT)
+Saved PC:0x408078fc
+SPIWP:0xee
+mode:DIO, clock div:2
+load:0x40875730,len:0x1278
+load:0x4086b910,len:0xc58
+load:0x4086e610,len:0x31c0
+entry 0x4086b910
+
+#HELLO Super Mouse 雷达桥 v2 · HLK-LD2454-24G
+#  协议 V1.00 · 256000 8N1 · AA FF 03 00 … 55 CC · 最多 3 目标
+#SCAN start
+#  LD2454：先在 256000 找 AA FF 03 00 帧头
+#  默认波特率没命中帧头，扫其他波特率…
+#SCAN 失败：没有任何引脚收到数据
+#LEVEL 引脚电平诊断（空闲 UART TX = 恒高）
+#  D7  GPIO17 : 被驱动 · 恒高  ← 像接通但静默的 UART TX
+#  D6  GPIO16 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D5  GPIO23 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D4  GPIO22 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D3  GPIO21 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D2  GPIO2  : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D1  GPIO1  : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D0  GPIO0  : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D8  GPIO19 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D9  GPIO20 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#  D10 GPIO18 : 随内部上下拉变化（高阻输入也会如此，不证明未接线）
+#LEVEL 有脚被外部驱动；恒高与空闲 UART 相容，但不能证明 TX 接线或供电正确
+#  检查 J1 Pin1 5V 实测电压、共地和焊点；RX 是输入，高阻是正常现象
+#  按协议 §1 检查接线（模块出厂不带排针，需自己焊）：
+#    Pin1 5V  → XIAO 5V    ← 是 5V，不是 3V3！供电不足会时好时坏
+#    Pin2 GND → XIAO GND   ← 不共地一定收不到
+#    Pin3 TX  → XIAO D7 (GPIO17)
+#    Pin4 RX  → XIAO D6 (GPIO16)   ← 不接则只能单目标
+#INFO rx=-1 tx=-1 baud=0 multi=0 bridging=0
+
+=== UART 256000 ===
+#BRIDGE rx=17 tx=-1 baud=256000 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=256000 multi=0
+
+=== UART 115200 ===
+#BRIDGE rx=17 tx=16 baud=115200 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=115200 multi=0
+
+=== UART 230400 ===
+#BRIDGE rx=17 tx=16 baud=230400 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=230400 multi=0
+
+=== UART 460800 ===
+#BRIDGE rx=17 tx=16 baud=460800 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=460800 multi=0
+
+=== UART 57600 ===
+#BRIDGE rx=17 tx=16 baud=57600 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=57600 multi=0
+
+=== UART 38400 ===
+#BRIDGE rx=17 tx=16 baud=38400 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=38400 multi=0
+
+=== UART 19200 ===
+#BRIDGE rx=17 tx=16 baud=19200 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=19200 multi=0
+
+=== UART 9600 ===
+#BRIDGE rx=17 tx=16 baud=9600 multi=0
+#CMD 使能配置 无回应  → 失败
+#CMD 结束配置 无回应  → 失败
+#MULTI 未确认（配置或结束配置未完整 ACK），不能保证检测第二人
+#BRIDGE rx=17 tx=16 baud=9600 multi=0
+
+#BRIDGE rx=17 tx=16 baud=256000 multi=0
+
+TOTAL_VALID_TARGET_FRAMES=0

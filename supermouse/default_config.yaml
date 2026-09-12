@@ -1,0 +1,118 @@
+# SUPER MOUSE 默认配置
+# 首次启动复制到 ~/.supermouse/config.yaml，之后改那个文件
+# 硬件相关的值已按 2026-09-12 实测填写（见 docs/03 §1）
+
+devices:
+  bci:
+    # 实测：脑机通过 USB 接收器暴露为 CDC 虚拟串口（VID 0x1a86 / PID 0x5722 "USBDV"）
+    # 波特率对 CDC 无影响，但 pyserial 需要一个值
+    transport: serial          # serial | ble | sim
+    port: auto                # auto = 自动匹配 usbmodem / usbserial / wchusbserial
+    baud: 57600
+    protocol: thinkgear
+    fs: 250                   # 实测 ≈245-250 Hz（不是手册常说的 512）
+    # BLE 备用（若换成蓝牙直连的型号）
+    ble_name_prefix: "BrainLink"
+    ble_notify_char: "0000ffe1-0000-1000-8000-00805f9b34fb"
+
+  radar:
+    # HLK-LD2454 → 立创 ESP32S3R8N8 MicroPython，保持板上已跑通固件不动
+    # 雷达 TX→G10 / RX→G11，UART1=256000；CH340K→主机=115200 文本
+    enabled: true
+    transport: serial
+    port: auto                # 只匹配 CH340K 1A86:7522；多个候选需指定实际 cu.wchusbserial* / COM6
+    connection: micropython   # micropython（只读文本）| arduino（旧桥）| direct（二进制直连）
+    baud: 115200              # 主机侧波特率，不是雷达 UART1 的速率
+    model: bridge             # bridge=MicroPython 文本；ld2454=二进制；也可 auto
+    facing: forward           # 当前探测区包含用户；仅旧单目标协议用此项过滤自身
+
+eyes:
+  enabled: true
+  calibration:
+    # 校准后由程序写回；未校准时 blink_detector 用自适应阈值
+    abs_threshold: null       # 滤波后信号的绝对幅度阈值
+    intent_peak: null         # 用力眨眼的典型峰值，用于归一化 strength
+    # 真机实测（24s 标注录音）：自然/双眨 strength 0.36–0.67，用力 0.93–1.00。
+    # 0.70–0.90 区间零漏判零误判，取中点余量最大。0.55 会切在自然眨眼中间。
+    hard_threshold: 0.80      # strength ≥ 此值算重眨
+    double_gap_ms: [120, 450]
+    long_ms: 400
+  refractory_ms: 500          # 眼势之间的最小间隔
+  quality_gate: 50            # poor_signal > 此值时禁用眼势
+  # 出厂不预设任何映射 —— 由用户在面板上「绑定热键」自己决定。
+  # 预设映射的问题：用户还没同意，眨眼就已经在替他点击和按键了。
+  gestures:
+    double_blink: { action: none }
+    triple_blink: { action: none }
+    hard_blink:   { action: none }
+    long_blink:   { action: none }
+
+brain:
+  enabled: true
+  model: claude-opus-5
+  knowledge_dir: ~/.supermouse/brain
+  hover_dwell_ms: 700
+  suggest_ttl_ms: 4000
+  repeat_cooldown_s: 30
+  slow_path: true             # 无预设计划时调用 Claude 生成建议
+  allowed_dirs:
+    - ~/Documents
+    - ~/Desktop
+  apps:
+    com.apple.mail:
+      skill: mail_draft_replies
+    com.microsoft.VSCode:
+      skill: vscode_open_todo
+      project: ~/Documents
+    com.apple.Notes:
+      skill: notes_daily_report
+    com.google.Chrome:
+      skill: browser_morning_tabs
+      urls:
+        - "https://github.com/notifications"
+        - "https://calendar.google.com"
+
+sense:
+  enabled: true
+  intruder_target_count: 2    # 包含本人：2；只覆盖过道：1。按有效目标数，不代表身份识别
+  zone_m: [0.8, 4.0]          # 上限过滤远处目标；下限不排除计数中的近处本人
+  min_frames: 3               # 窗口内累计达标帧数（走动目标会闪断，不能要求数字连续）
+  window_s: 2.0               # 滑窗宽度：2 秒内凑够 min_frames 帧即触发
+  max_frame_gap_s: 0.5        # 超时/断线后重新累计，不沿用旧帧
+  approach_speed_mps: 0.3
+  cooldown_s: 20
+  clear_s: 10
+  only_when_slacking: false   # 演示时先设 false，任何时候都触发
+  fun_apps:
+    - tv.danmaku.bili
+    - com.tencent.xinWeChat
+    - com.apple.TV
+    - com.google.Chrome
+  bind_work_hotkey: ctrl+alt+b # 全屏里按它=绑定当前 App 为工作页面；面板「换绑定热键」可自定义
+  work_scene:
+    - { do: hide_apps, apps: fun_apps }
+    - { do: activate, app: com.microsoft.VSCode }
+    - { do: mute }
+  restore_on_clear: ask       # ask | auto | never
+
+heart:
+  enabled: false              # 第四模式 SOFT HEART，待确认
+  blink_rate_min: 8           # 每分钟低于此值提醒护眼
+  blink_rate_window_s: 120
+  posture_minutes: 50
+
+mouse:
+  skin: default
+  hide_system_cursor: false   # 需要先装 Mousecape 空白光标包
+  sounds: false
+  scale: 1.0
+  hotspot: [16, 10]           # 老鼠鼻尖相对精灵图左上角的偏移
+
+sim:
+  hotkeys:
+    double_blink: f13
+    triple_blink: f14
+    hard_blink: f15
+    intruder: f16
+    clear: f17
+    blink: f18

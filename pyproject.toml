@@ -1,0 +1,33 @@
+[project]
+name = "supermouse"
+version = "0.1.0"
+description = "SUPER MOUSE — 把光标变成一只有超能力的老鼠"
+requires-python = ">=3.11"
+dependencies = [
+    "pyserial>=3.5",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "bleak>=0.22",
+    "anthropic>=0.40",
+    "openai>=1.40",
+    "PyQt6>=6.6",
+    "qasync>=0.27",
+    "pynput>=1.7",
+    "pyyaml>=6",
+    "pydantic>=2",
+    "websockets>=12",
+    "pillow>=10",
+    "pyobjc-framework-Quartz",
+    "pyobjc-framework-ApplicationServices",
+    "pyobjc-framework-Cocoa",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["supermouse*"]
+
+[tool.setuptools.package-data]
+supermouse = ["*.yaml"]
