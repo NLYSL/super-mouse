@@ -34,3 +34,6 @@ firmware/**/build/
 # 本地工具配置
 .claude/
 nohup.out
+
+# 开发文档不上传（本地保留）
+docs/

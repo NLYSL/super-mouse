@@ -95,17 +95,6 @@ Then **fully quit and reopen the terminal**. Approve every automation prompt on 
 
 ---
 
-## Documentation
-
-| Doc | Contents |
-|---|---|
-| [01 · PRD](docs/01-产品需求文档-PRD.md) | Product definition, per-mode interaction, gesture vocabulary, acceptance criteria |
-| [02 · Architecture](docs/02-系统架构与技术方案.md) | Architecture diagram, event protocol, config spec, macOS integration notes |
-| [03 · Hardware](docs/03-硬件接入指南.md) | BCI protocol parsing, blink-detection derivation, radar wiring and tuning |
-| [04 · AI Design](docs/04-Smart-Brain-AI设计.md) | Hover detection, skill system, dual backend, safety boundaries |
-| [05 · Demo Script](docs/05-开发计划与Demo脚本.md) | 3-minute demo script and pre-demo checklist |
-| [07 · Radar Handoff](docs/07-雷达数据接入交接.md) | Full debugging history: drivers, protocols, the two-board migration, every pitfall |
-
 ## Testing
 
 ```bash
